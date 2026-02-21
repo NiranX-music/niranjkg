@@ -9,26 +9,44 @@ import {
   FileText, 
   Zap,
   Activity,
-  Brain,
-  Settings
+  Settings,
+  History,
+  Cpu
 } from 'lucide-react';
+import Link from 'next/link';
 import TransformerVisualization from '@/components/TransformerVisualization';
 import HouseGrid from '@/components/HouseGrid';
-import PowerQualityPanel from '@/components/PowerQualityPanel';
+import AdvancedPowerQualityPanel from '@/components/AdvancedPowerQualityPanel';
 import AlertsPanel from '@/components/AlertsPanel';
 import PredictionChart from '@/components/PredictionChart';
 import ConfigurationPanel from '@/components/ConfigurationPanel';
+import TransformerStatusPanel from '@/components/TransformerStatusPanel';
+import FrequencyChart from '@/components/FrequencyChart';
+import AIAnalysisPanel from '@/components/AIAnalysisPanel';
+import SensorManagement from '@/components/SensorManagement';
+import THDChart from '@/components/THDChart';
+import NeutralCurrentChart from '@/components/NeutralCurrentChart';
+import Navigation from '@/components/Navigation';
+import { useToast } from '@/components/Toast';
 import { 
   SimulationState, 
   PredictionData, 
   WeatherCondition,
   createInitialState, 
   updateSimulation,
-  generatePredictions 
+  generatePredictions,
+  loadSettings,
+  saveHistoryRecord,
+  GlobalSettings
 } from '@/lib/simulation';
 import { exportToCSV, exportToPDF } from '@/lib/export';
 
 export default function Dashboard() {
+  const { addToast } = useToast();
+  
+  // Load settings
+  const [settings, setSettings] = useState<GlobalSettings>(loadSettings());
+  
   // Configuration state
   const [houseCount, setHouseCount] = useState(50);
   const [weather, setWeather] = useState<WeatherCondition>('sunny');
@@ -39,10 +57,40 @@ export default function Dashboard() {
   // Simulation state - initialize directly
   const [state, setState] = useState<SimulationState>(createInitialState(50, 'sunny'));
   const [predictions, setPredictions] = useState<PredictionData[]>(() => generatePredictions(createInitialState(50, 'sunny'), 24));
-  const [showConfig, setShowConfig] = useState(false);
+  const [showConfig, setShowConfig] = useState(true);
   const [showPredictions, setShowPredictions] = useState(true);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const historyRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Save to history periodically
+  useEffect(() => {
+    if (state.isRunning) {
+      historyRef.current = setInterval(() => {
+        const record = {
+          id: `record-${Date.now()}`,
+          timestamp: new Date(),
+          phaseA: state.phaseA,
+          phaseB: state.phaseB,
+          phaseC: state.phaseC,
+          neutralCurrent: state.neutralCurrent,
+          frequency: state.frequency,
+          transformerStatus: state.transformerStatus,
+          phaseImbalance: state.phaseImbalance,
+          totalSolarGeneration: state.totalSolarGeneration,
+          totalLoad: state.totalLoad,
+          aiAnalysis: state.aiAnalysis,
+        };
+        saveHistoryRecord(record);
+      }, 5000); // Save every 5 seconds
+    }
+
+    return () => {
+      if (historyRef.current) {
+        clearInterval(historyRef.current);
+      }
+    };
+  }, [state.isRunning, state]);
 
   // Regenerate state when house count changes
   const handleHouseCountChange = (newCount: number) => {
@@ -50,6 +98,7 @@ export default function Dashboard() {
     const newState = createInitialState(newCount, weather);
     setState(newState);
     setPredictions(generatePredictions(newState, 24));
+    addToast('success', 'Configuration Updated', `House count changed to ${newCount}`);
   };
 
   // Update weather 
@@ -66,6 +115,7 @@ export default function Dashboard() {
       setState(updatedState);
       setPredictions(generatePredictions(updatedState, 24));
     }
+    addToast('info', 'Weather Changed', `Weather set to ${newWeather}`);
   };
 
   // Simulation loop
@@ -78,7 +128,7 @@ export default function Dashboard() {
             weather,
             industrialMode,
             aiBalancerEnabled,
-          });
+          }, settings);
           
           // Update predictions periodically
           if (updated.time % 300 === 0) {
@@ -95,7 +145,7 @@ export default function Dashboard() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [state.isRunning, simulationSpeed, houseCount, weather, industrialMode, aiBalancerEnabled]);
+  }, [state.isRunning, simulationSpeed, houseCount, weather, industrialMode, aiBalancerEnabled, settings]);
 
   // Control functions
   const handleStartStop = () => {
@@ -105,14 +155,36 @@ export default function Dashboard() {
   const handleReset = () => {
     setState(createInitialState(houseCount, weather));
     setPredictions(generatePredictions(createInitialState(houseCount, weather), 24));
+    addToast('info', 'Simulation Reset', 'System reset to initial state');
   };
 
   const handleExportCSV = () => {
     exportToCSV(state);
+    addToast('success', 'Export Complete', 'CSV report downloaded');
   };
 
   const handleExportPDF = () => {
     exportToPDF(state, predictions);
+    addToast('success', 'Export Complete', 'PDF report downloaded');
+  };
+
+  // Handle sensor toggle
+  const handleSensorToggle = (sensorId: string) => {
+    setState(prev => ({
+      ...prev,
+      sensors: prev.sensors.map(s => 
+        s.id === sensorId ? { ...s, connected: !s.connected } : s
+      )
+    }));
+    
+    const sensor = state.sensors.find(s => s.id === sensorId);
+    if (sensor) {
+      addToast(
+        sensor.connected ? 'warning' : 'success',
+        sensor.connected ? 'Sensor Disconnected' : 'Sensor Connected',
+        `${sensor.name} ${sensor.connected ? 'disconnected' : 'connected'}`
+      );
+    }
   };
 
   // Format simulation time
@@ -125,56 +197,65 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#0a0f1a] text-zinc-100">
-      {/* Top Navigation Bar */}
-      <nav className="h-16 bg-[#111827] border-b border-zinc-800 px-4 flex items-center justify-between">
-        {/* Logo */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-blue-600 rounded-lg flex items-center justify-center">
-            <Zap className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold font-mono text-emerald-400">SmartGridSim</h1>
-            <p className="text-[10px] text-zinc-500">Research Edition v1.0</p>
-          </div>
-        </div>
+      {/* Navigation */}
+      <Navigation />
 
-        {/* Simulation Controls */}
+      {/* Top Controls Bar */}
+      <div className="bg-[#111827] border-b border-zinc-800 px-4 py-2 flex items-center justify-between">
+        {/* Time Display */}
         <div className="flex items-center gap-4">
-          {/* Time Display */}
           <div className="bg-zinc-800/50 px-4 py-2 rounded-lg">
             <span className="text-xs text-zinc-500 mr-2">Sim Time:</span>
             <span className="font-mono text-emerald-400">{formatTime(state.time)}</span>
           </div>
 
-          {/* Play/Stop Controls */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleStartStop}
-              className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                state.isRunning 
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
-                  : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-              }`}
-            >
-              {state.isRunning ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
-            </button>
-            <button
-              onClick={handleReset}
-              className="w-10 h-10 rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 flex items-center justify-center transition-all"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
+          {/* Frequency Display */}
+          <div className="bg-zinc-800/50 px-4 py-2 rounded-lg">
+            <span className="text-xs text-zinc-500 mr-2">Frequency:</span>
+            <span className={`font-mono ${
+              state.frequency < 49.5 || state.frequency > 50.5 ? 'text-red-500' : 'text-emerald-400'
+            }`}>
+              {state.frequency.toFixed(2)} Hz
+            </span>
           </div>
 
-          {/* Status Indicator */}
+          {/* Reverse Power Flow Indicator */}
+          {state.reversePowerFlow && (
+            <div className="bg-yellow-500/20 px-3 py-2 rounded-lg flex items-center gap-2">
+              <Zap className="w-4 h-4 text-yellow-500" />
+              <span className="text-xs text-yellow-500">Reverse Power Flow</span>
+            </div>
+          )}
+        </div>
+
+        {/* Play/Stop Controls */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleStartStop}
+            className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+              state.isRunning 
+                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+              }`}
+          >
+            {state.isRunning ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+          </button>
+          <button
+            onClick={handleReset}
+            className="w-10 h-10 rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 flex items-center justify-center transition-all"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Status Indicator */}
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${state.isRunning ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'}`} />
             <span className="text-xs text-zinc-500">{state.isRunning ? 'RUNNING' : 'PAUSED'}</span>
           </div>
-        </div>
 
-        {/* Export Actions */}
-        <div className="flex items-center gap-2">
+          {/* Export Actions */}
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-all text-sm"
@@ -189,6 +270,19 @@ export default function Dashboard() {
             <FileText className="w-4 h-4" />
             <span className="hidden sm:inline">Report</span>
           </button>
+          <Link
+            href="/history"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-all text-sm"
+          >
+            <History className="w-4 h-4" />
+            <span className="hidden sm:inline">History</span>
+          </Link>
+          <Link
+            href="/settings"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800/50 text-zinc-400 hover:text-white hover:bg-zinc-700/50 transition-all text-sm"
+          >
+            <Settings className="w-4 h-4" />
+          </Link>
           <button
             onClick={() => setShowConfig(!showConfig)}
             className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
@@ -198,10 +292,10 @@ export default function Dashboard() {
             <Settings className="w-5 h-5" />
           </button>
         </div>
-      </nav>
+      </div>
 
       {/* Main Content */}
-      <main className="p-4 grid grid-cols-12 gap-4 h-[calc(100vh-64px)]">
+      <main className="p-4 grid grid-cols-12 gap-4 h-[calc(100vh-120px)] overflow-hidden">
         {/* Left Panel - Configuration */}
         <div className={`col-span-12 lg:col-span-3 bg-[#111827] rounded-xl p-4 overflow-y-auto transition-all ${showConfig ? 'block' : 'hidden lg:block'}`}>
           <ConfigurationPanel
@@ -238,11 +332,6 @@ export default function Dashboard() {
                 }}
               />
             </div>
-            <div className="flex justify-between mt-1 text-[10px] text-zinc-600">
-              <span>Balanced</span>
-              <span>Warning</span>
-              <span>Critical</span>
-            </div>
           </div>
 
           {/* System Stats */}
@@ -261,29 +350,35 @@ export default function Dashboard() {
         </div>
 
         {/* Center Panel - Visualization */}
-        <div className="col-span-12 lg:col-span-5 flex flex-col gap-4">
+        <div className="col-span-12 lg:col-span-5 flex flex-col gap-4 overflow-y-auto">
           {/* Transformer Visualization */}
-          <div className="flex-1 bg-[#111827] rounded-xl p-4">
+          <div className="bg-[#111827] rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <Activity className="w-4 h-4 text-emerald-500" />
               <span className="text-sm font-semibold text-zinc-300">3-Phase Distribution Transformer</span>
             </div>
-            <div className="h-[280px]">
+            <div className="h-[200px]">
               <TransformerVisualization state={state} />
             </div>
           </div>
 
+          {/* Frequency Chart */}
+          <FrequencyChart currentFrequency={state.frequency} />
+
           {/* House Grid */}
-          <div className="bg-[#111827] rounded-xl p-4 max-h-[300px] overflow-y-auto">
+          <div className="bg-[#111827] rounded-xl p-4 max-h-[250px] overflow-y-auto">
             <HouseGrid houses={state.houses} />
           </div>
         </div>
 
         {/* Right Panel - Metrics */}
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-4">
+        <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 overflow-y-auto">
+          {/* Transformer Status */}
+          <TransformerStatusPanel status={state.transformerStatus} />
+
           {/* Power Quality */}
           <div className="bg-[#111827] rounded-xl p-4">
-            <PowerQualityPanel 
+            <AdvancedPowerQualityPanel 
               phaseA={state.phaseA}
               phaseB={state.phaseB}
               phaseC={state.phaseC}
@@ -291,13 +386,15 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Alerts */}
-          <div className="bg-[#111827] rounded-xl p-4 flex-1">
-            <AlertsPanel alerts={state.alerts} />
-          </div>
+          {/* THD Chart */}
+          <THDChart 
+            phaseA={state.phaseA}
+            phaseB={state.phaseB}
+            phaseC={state.phaseC}
+          />
         </div>
 
-        {/* Bottom Panel - Predictions */}
+        {/* Bottom Panel - Predictions & AI */}
         {showPredictions && (
           <div className="col-span-12 bg-[#111827] rounded-xl p-4">
             <button 
@@ -305,12 +402,15 @@ export default function Dashboard() {
               className="w-full flex items-center justify-between mb-2"
             >
               <div className="flex items-center gap-2">
-                <Brain className="w-4 h-4 text-purple-500" />
-                <span className="text-sm font-semibold text-zinc-300">ML Prediction Module</span>
+                <Cpu className="w-4 h-4 text-purple-500" />
+                <span className="text-sm font-semibold text-zinc-300">ML Prediction & AI Analysis Module</span>
               </div>
               <span className="text-xs text-zinc-500">▼ Collapse</span>
             </button>
-            <PredictionChart predictions={predictions} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <PredictionChart predictions={predictions} />
+              <AIAnalysisPanel analysis={state.aiAnalysis} />
+            </div>
           </div>
         )}
       </main>
