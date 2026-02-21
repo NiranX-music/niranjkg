@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/Toast";
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
@@ -29,7 +30,9 @@ export default function RootLayout({
       <body
         className={`${ibmPlexSans.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );
