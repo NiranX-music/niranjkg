@@ -276,7 +276,7 @@ export default function AdvancedDashboard() {
       </div>
 
       {/* Main Content - Advanced Grid Layout */}
-      <main className="p-4 grid grid-cols-12 gap-4 h-[calc(100vh-120px)] overflow-hidden">
+      <main className="p-4 grid grid-cols-12 gap-4 min-h-[calc(100vh-144px)] overflow-auto">
         
         {/* Left Panel - Configuration & Sensors */}
         <div className={`col-span-12 lg:col-span-2 bg-[#111827] rounded-xl p-4 overflow-y-auto transition-all ${showConfig ? 'block' : 'hidden lg:block'}`}>

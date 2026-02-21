@@ -7,7 +7,6 @@ import {
   Gauge, 
   TrendingUp, 
   BarChart3,
-  Wind
 } from 'lucide-react';
 import { 
   LineChart, 

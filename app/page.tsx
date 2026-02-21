@@ -295,7 +295,7 @@ export default function Dashboard() {
       </div>
 
       {/* Main Content */}
-      <main className="p-4 grid grid-cols-12 gap-4 h-[calc(100vh-120px)] overflow-hidden">
+      <main className="p-4 grid grid-cols-12 gap-4 min-h-[calc(100vh-144px)] overflow-auto">
         {/* Left Panel - Configuration */}
         <div className={`col-span-12 lg:col-span-3 bg-[#111827] rounded-xl p-4 overflow-y-auto transition-all ${showConfig ? 'block' : 'hidden lg:block'}`}>
           <ConfigurationPanel
